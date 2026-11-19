@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Portfolio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0f131a;--panel:#161b25;--line:#252c3a;--text:#e8ebf1;--mute:#8a93a6;--gain:#45c08f;--loss:#ee6a73;--accent:#7aa2ff;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Schibsted Grotesk",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+main{max-width:1080px;margin:0 auto;padding:28px 20px 60px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:18px;font-weight:500;margin:0;color:var(--mute)}
+button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--accent)} button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.status{color:var(--mute);font-size:13px;margin-top:4px}
+.hero{margin:28px 0 22px}
+.hero .big{font-size:clamp(38px,8vw,64px);font-weight:700;letter-spacing:-.02em;line-height:1.05}
+.hero .sub{font-size:18px;margin-top:6px}
+.gain{color:var(--gain)} .loss{color:var(--loss)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:26px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.stat span{display:block;color:var(--mute);font-size:13px}
+.stat b{font-size:20px;font-weight:500}
+h2{font-size:15px;font-weight:500;color:var(--mute);margin:30px 0 10px}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:860px}
+th,td{padding:12px 14px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:500;color:var(--mute);font-size:13px;cursor:pointer;user-select:none}
+tr:last-child td{border-bottom:0}
+td small{display:block;color:var(--mute);font-size:12px}
+.alloc{display:flex;height:16px;border-radius:8px;overflow:hidden;gap:2px}
+.alloc i{display:block}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:13px;color:var(--mute)}
+.legend em{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;font-style:normal}
+.pl{display:grid;grid-template-columns:120px 1fr 1fr 90px;align-items:center;gap:8px;margin:7px 0;font-size:14px}
+.pl .l,.pl .r{height:14px;display:flex}.pl .l{justify-content:flex-end}
+.pl .l div{background:var(--loss);border-radius:4px 0 0 4px}.pl .r div{background:var(--gain);border-radius:0 4px 4px 0}
+.pl .v{text-align:right}
+.note{color:var(--mute);font-size:13px;margin-top:22px}
+.err{color:var(--loss)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div><h1>My NSE portfolio</h1><div class="status" id="status">Loading prices…</div></div>
+  <button id="refresh">Refresh prices</button>
+</header>
+
+<section class="hero" id="hero"></section>
+<section class="stats" id="stats"></section>
+
+<h2>Holdings</h2>
+<div class="scroll"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+
+<h2>Allocation by current value</h2>
+<div class="alloc" id="alloc"></div><div class="legend" id="legend"></div>
+
+<h2>Profit and loss per holding</h2>
+<div id="pl"></div>
+
+<p class="note" id="note"></p>
+</main>
+
+<script>
+/* ===== EDIT YOUR HOLDINGS HERE =====
+   buyPrice = average cost per share (₹). buyDate = YYYY-MM (approximate dates are marked ~). */
+const HOLDINGS = [
+  { name:"Tata Motors Passenger Vehicles", sym:"TMPV.NS", qty:8,  buyPrice:688.50,  buyDate:"2025-04", approx:true,
+    note:"Original 8 Tata Motors @ ₹1,000, 68.85% of cost" },
+  { name:"Tata Motors Commercial Vehicles", sym:"TMCV.NS", qty:8,  buyPrice:311.50,  buyDate:"2025-04", approx:true,
+    note:"Received in the Oct 2025 demerger, 31.15% of cost" },
+  { name:"Tata Elxsi",  sym:"TATAELXSI.NS", qty:2,  buyPrice:7400, buyDate:"2021-07", approx:true },
+  { name:"SBI",         sym:"SBIN.NS",      qty:15, buyPrice:815,  buyDate:"2024-11", approx:true },
+  { name:"M&M",         sym:"M&M.NS",       qty:5,  buyPrice:2800, buyDate:"2024-05", approx:true },
+  { name:"Titan",       sym:"TITAN.NS",     qty:30, buyPrice:3500, buyDate:"2024-11", approx:true },
+];
+/* ==================================== */
+
+const inr = n => "₹" + n.toLocaleString("en-IN",{maximumFractionDigits:2,minimumFractionDigits:2});
+const inr0 = n => "₹" + Math.round(n).toLocaleString("en-IN");
+const pct = n => (n>=0?"+":"") + n.toFixed(2) + "%";
+const sgn = n => n>=0 ? "gain":"loss";
+const COLORS=["#7aa2ff","#45c08f","#f2b45c","#ee6a73","#b58cf0","#5fd0d6"];
+let sortKey="value", sortDir=-1, rows=[];
+
+function held(d){
+  const [y,m]=d.split("-").map(Number), days=(Date.now()-new Date(y,m-1,1))/864e5;
+  const yrs=Math.floor(days/365), mo=Math.floor((days%365)/30);
+  return (yrs?yrs+"y ":"")+mo+"m";
+}
+function fmtDate(d){ const [y,m]=d.split("-").map(Number);
+  return new Date(y,m-1,1).toLocaleString("en-IN",{month:"short",year:"numeric"}); }
+
+async function load(){
+  const st=document.getElementById("status"); st.textContent="Fetching live prices…"; st.classList.remove("err");
+  try{
+    const r=await fetch("/api/quotes",{cache:"no-store"}); const j=await r.json();
+    rows=HOLDINGS.map(h=>{
+      const q=j.quotes[h.sym]||{}, ok=typeof q.price==="number";
+      const invested=h.qty*h.buyPrice, price=ok?q.price:null, value=ok?h.qty*price:null;
+      return {...h, invested, price, value,
+        pl: ok?value-invested:null, plPct: ok?(value/invested-1)*100:null,
+        day: ok&&q.prevClose?h.qty*(price-q.prevClose):0, dayPct: ok&&q.prevClose?(price/q.prevClose-1)*100:0, ok};
+    });
+    const t=new Date(j.fetchedAt).toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+    const missing=rows.filter(r=>!r.ok).length;
+    st.textContent="Prices as of "+t+" IST (last traded price from NSE)"+(missing?` · ${missing} price(s) unavailable`:"");
+    if(missing) st.classList.add("err");
+    render();
+  }catch(e){ st.textContent="Could not load prices. Check your connection and press Refresh."; st.classList.add("err"); }
+}
+
+function render(){
+  const ok=rows.filter(r=>r.ok);
+  const inv=ok.reduce((a,r)=>a+r.invested,0), val=ok.reduce((a,r)=>a+r.value,0);
+  const pl=val-inv, day=ok.reduce((a,r)=>a+r.day,0), prevVal=val-day;
+  document.getElementById("hero").innerHTML=
+    `<div class="big">${inr0(val)}</div>
+     <div class="sub ${sgn(pl)}">${pl>=0?"+":"−"}${inr0(Math.abs(pl))} (${pct(pl/inv*100)}) overall</div>`;
+  const best=[...ok].sort((a,b)=>b.plPct-a.plPct)[0], worst=[...ok].sort((a,b)=>a.plPct-b.plPct)[0];
+  document.getElementById("stats").innerHTML=[
+    ["Money invested",inr0(inv),""],
+    ["Current value",inr0(val),""],
+    ["Today",`${day>=0?"+":"−"}${inr0(Math.abs(day))} (${pct(day/prevVal*100)})`,sgn(day)],
+    ["Best performer",best?`${best.name.replace("Tata Motors ","TM ")} ${pct(best.plPct)}`:"-","gain"],
+    ["Weakest performer",worst?`${worst.name.replace("Tata Motors ","TM ")} ${pct(worst.plPct)}`:"-",worst&&worst.plPct<0?"loss":""],
+  ].map(s=>`<div class="stat"><span>${s[0]}</span><b class="${s[2]}">${s[1]}</b></div>`).join("");
+
+  const cols=[["name","Stock"],["qty","Qty"],["buyPrice","Avg buy"],["buyDate","Bought"],["invested","Invested"],["price","Price now"],["value","Value"],["pl","P&L"],["plPct","P&L %"],["day","Today"]];
+  document.querySelector("#tbl thead").innerHTML="<tr>"+cols.map(c=>`<th data-k="${c[0]}">${c[1]}${sortKey===c[0]?(sortDir>0?" ▲":" ▼"):""}</th>`).join("")+"</tr>";
+  const sorted=[...rows].sort((a,b)=>{const x=a[sortKey]??-1e12,y=b[sortKey]??-1e12;return (x>y?1:x<y?-1:0)*sortDir});
+  document.querySelector("#tbl tbody").innerHTML=sorted.map(r=>`<tr>
+    <td>${r.name}<small>${r.sym.replace(".NS","")}${r.note?" · "+r.note:""}</small></td>
+    <td>${r.qty}</td><td>${inr(r.buyPrice)}</td>
+    <td>${r.approx?"~":""}${fmtDate(r.buyDate)}<small>held ${held(r.buyDate)}</small></td>
+    <td>${inr(r.invested)}</td>
+    <td>${r.ok?inr(r.price):"-"}<small class="${sgn(r.dayPct)}">${r.ok?pct(r.dayPct)+" today":""}</small></td>
+    <td>${r.ok?inr(r.value):"-"}</td>
+    <td class="${r.ok?sgn(r.pl):""}">${r.ok?(r.pl>=0?"+":"−")+inr(Math.abs(r.pl)):"-"}</td>
+    <td class="${r.ok?sgn(r.plPct):""}">${r.ok?pct(r.plPct):"-"}</td>
+    <td class="${sgn(r.day)}">${r.ok?(r.day>=0?"+":"−")+inr(Math.abs(r.day)):"-"}</td></tr>`).join("");
+  document.querySelectorAll("th").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=sortKey===k?-sortDir:-1;sortKey=k;render()});
+
+  const byVal=[...ok].sort((a,b)=>b.value-a.value);
+  document.getElementById("alloc").innerHTML=byVal.map((r,i)=>`<i style="width:${r.value/val*100}%;background:${COLORS[i%6]}" title="${r.name}"></i>`).join("");
+  document.getElementById("legend").innerHTML=byVal.map((r,i)=>`<span><em style="background:${COLORS[i%6]}"></em>${r.name.replace("Tata Motors ","TM ")} ${(r.value/val*100).toFixed(1)}%</span>`).join("");
+  const mx=Math.max(...ok.map(r=>Math.abs(r.pl)),1);
+  document.getElementById("pl").innerHTML=[...ok].sort((a,b)=>b.pl-a.pl).map(r=>`<div class="pl"><span>${r.name.replace("Tata Motors ","TM ")}</span>
+    <div class="l">${r.pl<0?`<div style="width:${Math.abs(r.pl)/mx*100}%"></div>`:""}</div>
+    <div class="r">${r.pl>=0?`<div style="width:${r.pl/mx*100}%"></div>`:""}</div>
+    <span class="v ${sgn(r.pl)}">${r.pl>=0?"+":"−"}${inr0(Math.abs(r.pl))}</span></div>`).join("");
+  document.getElementById("note").textContent="Buy dates marked ~ are approximate. Prices are delayed or last-traded values from Yahoo Finance, so they can differ slightly from your broker. Not investment advice.";
+}
+document.getElementById("refresh").onclick=load;
+load();
+</script>
+</body>
+</html>
